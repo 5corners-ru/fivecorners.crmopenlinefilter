@@ -1,0 +1,20 @@
+# Local Claude-session handoff (переписывается каждую сессию)
+NEXT_SESSION.md
+
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json
+
+# Build artefacts — дистрибутив
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
