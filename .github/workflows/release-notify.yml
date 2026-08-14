@@ -1,0 +1,60 @@
+# build-market-harvester — GA-webhook (развилка «б», near-realtime половина гибрида).
+#
+# Кладётся в КАЖДЫЙ модульный репо как .github/workflows/release-notify.yml.
+# Срабатывает на push тега vX.Y.Z и дёргает харвестер на build-хосте по SSH,
+# чтобы тот сгенерил latest.json и запостил changelog в чат проекта.
+# Cron `--reconcile` на build-хосте — вторая половина гибрида (страховка от
+# пропущенного вебхука), настраивается на самом хосте, не здесь.
+#
+# ТРЕБУЕМЫЕ SECRETS (repo-level — на Free-плане org-секреты не работают с приватными
+# репо; заводятся per-repo через `gh secret set --repo <repo>`):
+#   BUILD_MARKET_HOST         хост build-market (напр. build.market.5corners.ru)
+#   BUILD_MARKET_USER         ssh-пользователь харвестера
+#   BUILD_MARKET_SSH_KEY      приватный деплой-ключ (pubkey в authorized_keys build@host)
+#   BUILD_MARKET_KNOWN_HOSTS  вывод `ssh-keyscan <host>` — пиннинг, без него MITM-риск
+#
+# Путь к харвестеру на хосте ниже (HARVESTER_DIR) поправить под реальную раскладку.
+
+name: notify-build-market
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Ручной триггер (Actions → Run workflow) — для проверки связки без пуша тега.
+  workflow_dispatch:
+
+# Тег двигается редко — не душим параллелью, но и не копим очередь.
+concurrency:
+  group: notify-build-market-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    # Секреты не прокидываются в форк-PR; тег-пуш и так только у мейнтейнеров.
+    steps:
+      - name: Trigger harvester on build host
+        env:
+          SSH_HOST: ${{ secrets.BUILD_MARKET_HOST }}
+          SSH_USER: ${{ secrets.BUILD_MARKET_USER }}
+          SSH_KEY: ${{ secrets.BUILD_MARKET_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.BUILD_MARKET_KNOWN_HOSTS }}
+          REPO: ${{ github.repository }}
+          HARVESTER_DIR: /var/www/vhosts/build.market.5corners.ru/harvester
+        run: |
+          set -euo pipefail
+          if [ -z "${SSH_HOST:-}" ]; then
+            echo "::error::BUILD_MARKET_* secrets не заданы — харвестер не развёрнут (деплой-гейт)."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # На хосте .env держит GH_TOKEN+PALYCH_TOKEN (тот же секрет-файл, что и для cron —
+          # org-secrets несут ТОЛЬКО ssh-доступ, не github/palych-токены).
+          # --repo: точечный проход. --post: постинг changelog (харвестер сам блокирует
+          #         пустой changelog и дедупит по версии в state).
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes "$SSH_USER@$SSH_HOST" \
+            "cd '$HARVESTER_DIR' && . ./.env && export GH_TOKEN PALYCH_TOKEN && python3 harvester.py --config config.json --repo '$REPO' --post --changelog-creds _out/changelog.creds.json"
