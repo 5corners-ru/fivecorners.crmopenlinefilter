@@ -56,5 +56,9 @@ jobs:
           # org-secrets несут ТОЛЬКО ssh-доступ, не github/palych-токены).
           # --repo: точечный проход. --post: постинг changelog (харвестер сам блокирует
           #         пустой changelog и дедупит по версии в state).
+          # --keeperdoc-creds: заявка Хранителю на актуализацию вики. Дефолтный путь креда
+          #         (~/.claude/credentials/...) на build-хосте не существует — без явного
+          #         флага шаг молча уходил в keeper_doc="skipped" на КАЖДОМ тег-релизе
+          #         (cron этот модуль потом пропускает как «уже опубликован»).
           ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes "$SSH_USER@$SSH_HOST" \
-            "cd '$HARVESTER_DIR' && . ./.env && export GH_TOKEN PALYCH_TOKEN && python3 harvester.py --config config.json --repo '$REPO' --post --changelog-creds _out/changelog.creds.json"
+            "cd '$HARVESTER_DIR' && . ./.env && export GH_TOKEN PALYCH_TOKEN && python3 harvester.py --config config.json --repo '$REPO' --post --changelog-creds _out/changelog.creds.json --keeperdoc-creds _out/keeperdoc.creds.json"
